@@ -12,7 +12,7 @@ import (
 	"text/template"
 
 	"github.com/Masterminds/sprig"
-	"github.com/elgs/gojq"
+	"github.com/jwilder/gojq"
 )
 
 func exists(path string) (bool, error) {
