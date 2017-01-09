@@ -41,17 +41,18 @@ var (
 	poll         bool
 	wg           sync.WaitGroup
 
-	templatesFlag   sliceVar
-	stdoutTailFlag  sliceVar
-	stderrTailFlag  sliceVar
-	headersFlag     sliceVar
-	delimsFlag      string
-	delims          []string
-	headers         []HttpHeader
-	urls            []url.URL
-	waitFlag        hostFlagsVar
-	waitTimeoutFlag time.Duration
-	dependencyChan  chan struct{}
+	templatesFlag    sliceVar
+	templateDirsFlag sliceVar
+	stdoutTailFlag   sliceVar
+	stderrTailFlag   sliceVar
+	headersFlag      sliceVar
+	delimsFlag       string
+	delims           []string
+	headers          []HttpHeader
+	urls             []url.URL
+	waitFlag         hostFlagsVar
+	waitTimeoutFlag  time.Duration
+	dependencyChan   chan struct{}
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -84,24 +85,12 @@ func waitForDependencies() {
 
 			switch u.Scheme {
 			case "tcp", "tcp4", "tcp6":
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					for {
-						conn, err := net.DialTimeout(u.Scheme, u.Host, waitTimeoutFlag)
-						if err != nil {
-							log.Printf("Problem with dial: %v. Sleeping 5s\n", err.Error())
-							time.Sleep(5 * time.Second)
-						}
-						if conn != nil {
-							log.Println("Connected to", u.String())
-							return
-						}
-					}
-				}()
+				waitForSocket(u.Scheme, u.Host, waitTimeoutFlag)
+			case "unix":
+				waitForSocket(u.Scheme, u.Path, waitTimeoutFlag)
 			case "http", "https":
 				wg.Add(1)
-				go func() {
+				go func(u url.URL) {
 					defer wg.Done()
 					for {
 						client := &http.Client{}
@@ -117,7 +106,7 @@ func waitForDependencies() {
 							return
 						}
 					}
-				}()
+				}(u)
 			default:
 				log.Fatalf("invalid host protocol provided: %s. supported protocols are: tcp, tcp4, tcp6 and http", u.Scheme)
 			}
@@ -133,6 +122,24 @@ func waitForDependencies() {
 		log.Fatalf("Timeout after %s waiting on dependencies to become available: %v", waitTimeoutFlag, waitFlag)
 	}
 
+}
+
+func waitForSocket(scheme, addr string, timeout time.Duration) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			conn, err := net.DialTimeout(scheme, addr, waitTimeoutFlag)
+			if err != nil {
+				log.Printf("Problem with dial: %v. Sleeping 5s\n", err.Error())
+				time.Sleep(5 * time.Second)
+			}
+			if conn != nil {
+				log.Printf("Connected to %s://%s\n", scheme, addr)
+				return
+			}
+		}
+	}()
 }
 
 func usage() {
@@ -166,12 +173,12 @@ func main() {
 
 	flag.BoolVar(&version, "version", false, "show version")
 	flag.BoolVar(&poll, "poll", false, "enable polling")
-	flag.Var(&templatesFlag, "template", "Template (/template:/dest). Can be passed multiple times")
+	flag.Var(&templatesFlag, "template", "Template (/template:/dest). Can be passed multiple times. Does also support directories")
 	flag.Var(&stdoutTailFlag, "stdout", "Tails a file to stdout. Can be passed multiple times")
 	flag.Var(&stderrTailFlag, "stderr", "Tails a file to stderr. Can be passed multiple times")
 	flag.StringVar(&delimsFlag, "delims", "", `template tag delimiters. default "{{":"}}" `)
 	flag.Var(&headersFlag, "wait-http-header", "HTTP headers, colon separated. e.g \"Accept-Encoding: gzip\". Can be passed multiple times")
-	flag.Var(&waitFlag, "wait", "Host (tcp/tcp4/tcp6/http/https) to wait for before this container starts. Can be passed multiple times. e.g. tcp://db:5432")
+	flag.Var(&waitFlag, "wait", "Host (tcp/tcp4/tcp6/http/https/unix) to wait for before this container starts. Can be passed multiple times. e.g. tcp://db:5432")
 	flag.DurationVar(&waitTimeoutFlag, "timeout", 10*time.Second, "Host wait timeout")
 
 	flag.Usage = usage
@@ -230,7 +237,16 @@ func main() {
 			}
 			template, dest = parts[0], parts[1]
 		}
-		generateFile(template, dest)
+
+		fi, err := os.Stat(template)
+		if err != nil {
+			log.Fatalf("unable to stat %s, error: %s", template, err)
+		}
+		if fi.IsDir() {
+			generateDir(template, dest)
+		} else {
+			generateFile(template, dest)
+		}
 	}
 
 	waitForDependencies()

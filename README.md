@@ -1,4 +1,4 @@
-dockerize ![version v0.2.0](https://img.shields.io/badge/version-v0.2.0-brightgreen.svg) ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+dockerize ![version v0.3.0](https://img.shields.io/badge/version-v0.3.0-brightgreen.svg) ![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 =============
 
 Utility to simplify running applications in docker containers.
@@ -29,16 +29,27 @@ See [A Simple Way To Dockerize Applications](http://jasonwilder.com/blog/2014/10
 
 Download the latest version in your container:
 
-* [linux/amd64](https://github.com/jwilder/dockerize/releases/download/v0.2.0/dockerize-linux-amd64-v0.2.0.tar.gz)
+* [linux/amd64](https://github.com/jwilder/dockerize/releases/download/v0.3.0/dockerize-linux-amd64-v0.3.0.tar.gz)
 
 For Ubuntu Images:
 
 ``` Dockerfile
 RUN apt-get update && apt-get install -y wget
 
-ENV DOCKERIZE_VERSION v0.2.0
+ENV DOCKERIZE_VERSION v0.3.0
 RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
-    && tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+    && tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+```
+
+## Docker Base Image
+
+The `jwilder/dockerize` image is a base image that can be used that is based on `alpine linux`.  `dockerize` is installed in the `$PATH` and can be used directly.
+
+```
+FROM jwilder/dockerize
+...
+ENTRYPOINT dockerize ...
 ```
 
 ## Usage
@@ -66,6 +77,14 @@ Templates can be generated to `STDOUT` by not specifying a dest:
 
 ```
 $ dockerize -template template1.tmpl
+
+```
+
+Template may also be a directory. In this case all files within this directory are processed as template and stored with the same name in the destination directory.
+If the destination directory is omitted, the output is sent to `STDOUT`. The files in the source directory are processed in sorted order (as returned by `ioutil.ReadDir`).
+
+```
+$ dockerize -template src_dir:dest_dir
 
 ```
 
@@ -101,7 +120,7 @@ $ dockerize -wait http://web:80 -wait-http-header "Authorization:Basic QWxhZGRpb
 
 It is common when using tools like [Docker Compose](https://docs.docker.com/compose/) to depend on services in other linked containers, however oftentimes relying on [links](https://docs.docker.com/compose/compose-file/#links) is not enough - whilst the container itself may have _started_, the _service(s)_ within it may not yet be ready - resulting in shell script hacks to work around race conditions.
 
-Dockerize gives you the ability to wait for services on a specified protocol (`tcp`, `tcp4`, `tcp6`, `http`, and `https`) before starting your application:
+Dockerize gives you the ability to wait for services on a specified protocol (`tcp`, `tcp4`, `tcp6`, `http`, `https` and `unix`) before starting your application:
 
 ```
 $ dockerize -wait tcp://db:5432 -wait http://web:80
